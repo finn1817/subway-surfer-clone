@@ -14,8 +14,9 @@ const kaplayCongrats = () => {
 };
 
 export default defineConfig({
-    // index.html out file will start with a relative path for script
-    base: "./",
+    // Set this to '/' for root domain or '/repo-name/' for GitHub Pages
+    // Change 'subway-surfer-clone' to your actual repository name if different
+    base: process.env.NODE_ENV === 'production' ? '/subway-surfer-clone/' : './',
     server: {
         port: 3001,
     },
