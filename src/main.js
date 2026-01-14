@@ -4,8 +4,8 @@ import kaplay from "kaplay";
 kaplay({
     width: 800,
     height: 600,
-    background: [135, 206, 235], // Sky blue background
-    debug: true, // F1 for hitboxes
+    background: [135, 206, 235], // Sky blue
+    debug: true, // F1 to see hitboxes
 });
 
 // --- CONSTANTS & CONFIG ---
@@ -13,212 +13,165 @@ const LANE_COUNT = 5;
 const LANE_WIDTH = width() / LANE_COUNT;
 const PLAYER_Y = height() - 100;
 const SPEED_START = 400;
-const SPEED_MAX = 1200;
+const SPEED_MAX = 1000;
+let currentSpeed = SPEED_START;
 
-// Helper: Calculate the X center of a specific lane (0 to 4)
+// Calculate the X center of a specific lane
 function getLaneX(laneIndex) {
     laneIndex = Math.max(0, Math.min(laneIndex, LANE_COUNT - 1));
     return (laneIndex * LANE_WIDTH) + (LANE_WIDTH / 2);
 }
 
 // --- ASSETS ---
-loadSprite("bean", "sprites/bean.png"); 
+// Using loadBean() is safer for now. It loads the default built-in character.
+// If you have your file, you can change this back to: loadSprite("bean", "sprites/bean.png");
+loadBean(); 
 
-// ==================================================
-// SCENE 1: START MENU
-// ==================================================
-scene("start", () => {
-    // Title
-    add([
-        text("SUBWAY RUNNER", { size: 60, font: "monospace" }),
-        pos(center().x, center().y - 100),
-        anchor("center"),
-        color(255, 255, 0),
-    ]);
-
-    // Instructions
-    add([
-        text("ARROWS to Move  |  SPACE to Jump", { size: 24 }),
-        pos(center().x, center().y),
-        anchor("center"),
-    ]);
-
-    // Flashing "Press Space" text
-    const startText = add([
-        text("PRESS SPACE TO START", { size: 30 }),
-        pos(center().x, center().y + 100),
-        anchor("center"),
-        opacity(1),
-    ]);
-
-    // Simple flash animation
-    loop(0.8, () => {
-        startText.opacity = startText.opacity === 1 ? 0 : 1;
-    });
-
-    onKeyPress("space", () => {
-        go("game");
-    });
-});
-
-// ==================================================
-// SCENE 2: THE GAME LOOP
-// ==================================================
+// --- SCENE: GAME ---
 scene("game", () => {
     
-    // --- VARIABLES ---
-    let currentLane = 2; // Start in middle (0-4)
-    let currentSpeed = SPEED_START;
+    // VARIABLES
+    let currentLane = 2; // Start in middle lane (0-4)
     let score = 0;
     let isJumping = false;
 
-    // --- SETUP ---
-    
-    // 1. Visual Lane Markers
+    // 1. ADD BACKGROUND LINES
     for (let i = 1; i < LANE_COUNT; i++) {
         add([
-            rect(4, height()),
+            rect(2, height()),
             pos(i * LANE_WIDTH, 0),
             color(255, 255, 255),
-            opacity(0.2),
+            opacity(0.3),
+            "lane-marker"
         ]);
     }
 
-    // 2. The Player
+    // 2. THE PLAYER
     const player = add([
-        sprite("bean"),
+        sprite("bean"),    // Uses the default bean sprite
         pos(getLaneX(currentLane), PLAYER_Y),
         anchor("center"),
-        scale(1.5), // Normal size
-        area({ scale: 0.8 }), // Hitbox slightly smaller
-        z(10), // Draw on top
+        scale(1),
+        area(),            // Hitbox
+        z(10),             // Draw on top
         "player"
     ]);
 
-    // 3. UI Layer
+    // 3. UI - SCORE
     const scoreLabel = add([
-        text("0", { size: 48, font: "monospace" }),
+        text("Score: 0"),
         pos(24, 24),
-        z(100)
+        z(100),
     ]);
 
     // --- CONTROLS ---
-
-    // Move Left
+    
+    // Switch Left
     onKeyPress("left", () => {
-        if (currentLane > 0) currentLane--;
-    });
-
-    // Move Right
-    onKeyPress("right", () => {
-        if (currentLane < LANE_COUNT - 1) currentLane++;
-    });
-
-    // Jump Action
-    onKeyPress("space", () => {
-        if (!isJumping) { 
-            performJump();
+        if (currentLane > 0) {
+            currentLane--;
         }
     });
 
-    function performJump() {
+    // Switch Right
+    onKeyPress("right", () => {
+        if (currentLane < LANE_COUNT - 1) {
+            currentLane++;
+        }
+    });
+
+    // Jump
+    onKeyPress("space", () => {
+        jumpAction();
+    });
+
+    function jumpAction() {
+        if (isJumping) return;
         isJumping = true;
-        // Visual "Jump": Scale up to simulate getting closer to camera
-        tween(1.5, 2.5, 0.3, (val) => player.scale = vec2(val), easings.easeOutQuad)
+        
+        // Visual "Pop" effect (Scale Up then Down)
+        tween(1, 1.5, 0.2, (val) => player.scale = vec2(val), easings.easeOutQuad)
         .then(() => {
-            tween(2.5, 1.5, 0.3, (val) => player.scale = vec2(val), easings.easeInQuad)
+            tween(1.5, 1, 0.2, (val) => player.scale = vec2(val), easings.easeInQuad)
             .then(() => isJumping = false);
         });
     }
 
-    // --- GAME LOGIC ---
+    // --- GAME LOOP ---
 
     onUpdate(() => {
-        // 1. Smooth Movement (Lerp)
+        // Smooth movement: Lerp player X to the target lane X
         const targetX = getLaneX(currentLane);
         player.pos.x = lerp(player.pos.x, targetX, dt() * 15);
-
-        // 2. Score & Speed
+        
+        // Update Score
         score += dt() * 10;
-        scoreLabel.text = Math.floor(score);
+        scoreLabel.text = "Score: " + Math.floor(score);
 
+        // Increase game speed gradually
         if (currentSpeed < SPEED_MAX) {
-            currentSpeed += 10 * dt(); // Accelerate slowly
+            currentSpeed += 5 * dt(); 
         }
     });
 
     // --- OBSTACLE SPAWNER ---
     
-    // Spawner Loop
-    loop(1.2, () => {
+    loop(1.0, () => { 
         spawnObstacle();
     });
 
     function spawnObstacle() {
+        // Pick a random lane
         const lane = randi(0, LANE_COUNT);
         
-        // 20% Chance for a "Barricade" (Red) -> Must Jump
-        // 80% Chance for a "Block" (Orange) -> Must Dodge
+        // 20% chance to spawn a "Barricade" (Red) -> Must Jump
         const isBarricade = rand() < 0.2; 
 
-        const obs = add([
-            rect(LANE_WIDTH - 20, 50),
-            pos(getLaneX(lane), -100),
+        add([
+            rect(LANE_WIDTH - 20, 40), 
+            pos(getLaneX(lane), -50),
             anchor("center"),
-            color(isBarricade ? [255, 50, 50] : [255, 165, 0]),
+            color(isBarricade ? [255, 0, 0] : [255, 100, 0]), // Red vs Orange
             area(),
-            move(DOWN, currentSpeed),
-            offscreen({ destroy: true }),
+            move(DOWN, currentSpeed), // Move down automatically
+            offscreen({ destroy: true }), // Cleanup when off screen
             "obstacle",
-            { isBarricade: isBarricade } // Custom property
+            {
+                isBarricade: isBarricade
+            }
         ]);
-
-        // Visual distinction for Barricades
-        if (isBarricade) {
-            obs.use(outline(4, [0,0,0])); // Add outline to red ones
-        }
     }
 
-    // --- COLLISION HANDLING ---
-
+    // --- COLLISIONS ---
+    
     player.onCollide("obstacle", (obs) => {
-        // Rule: If it's a Barricade AND we are Jumping, we survive.
+        // Logic: If it's a barricade AND we are jumping, we are safe
         if (obs.isBarricade && isJumping) {
-            shake(2); // Feedback
-        } 
-        // Otherwise, we crash.
-        else {
+            shake(2); 
+        } else {
+            // CRASH!
             shake(20);
-            destroy(player);
             go("gameover", Math.floor(score));
         }
     });
 });
 
-// ==================================================
-// SCENE 3: GAME OVER
-// ==================================================
-scene("gameover", (finalScore) => {
+// --- SCENE: GAMEOVER ---
+scene("gameover", (score) => {
     add([
-        text("GAME OVER", { size: 64, color: [255, 0, 0] }),
-        pos(center().x, center().y - 50),
+        text("GAME OVER\nScore: " + score, { align: "center" }),
+        pos(center()),
         anchor("center"),
     ]);
 
     add([
-        text("Final Score: " + finalScore, { size: 32 }),
-        pos(center().x, center().y + 50),
-        anchor("center"),
-    ]);
-
-    add([
-        text("Press SPACE to Restart", { size: 24 }),
-        pos(center().x, center().y + 120),
+        text("Press Space to Restart", { size: 24 }),
+        pos(center().x, center().y + 100),
         anchor("center"),
     ]);
 
     onKeyPress("space", () => go("game"));
 });
 
-// Start the game at the Menu
-go("start");
+// Start the game immediately
+go("game");
